@@ -3,6 +3,8 @@
 Base URL: `https://api-energiemonitor.eon.com/`  
 Web dashboard: `https://energiemonitor.bayernwerk.de/<regionUrlKey>`
 
+**Region list (snapshot):** [REGIONEN.md](REGIONEN.md) — all municipalities per grid operator, how to look up your `region_code`, and `scripts/generate-regions-doc.py` to refresh the file.
+
 The integration calls **two endpoints** on each update (`scan_interval` minutes). Values for **autarky** and **energyMix** are provided by the API (regional balance, not calculated in Home Assistant). See [Bayernwerk Energiemonitor](https://www.bayernwerk.de/de/fuer-kommunen/digitale-loesungen/energiemonitor.html) for the public product description.
 
 ## `region-data`
@@ -11,6 +13,7 @@ The integration calls **two endpoints** on each update (`scan_interval` minutes)
 |-------|---------|
 | `regionCode=<code>` | Metadata for the configured region |
 | `regionUrlKey=<slug>` | Resolve numeric `regionCode` from the dashboard URL slug |
+| `tenantId=<id>` (no region param) | List all regions for a grid operator (`regions[]` in response) |
 
 | Field | Meaning | Home Assistant |
 |-------|---------|----------------|
