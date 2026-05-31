@@ -1,5 +1,5 @@
 # Optional Lovelace card: show a hint when configuration or API data is missing.
-# Place above the power-distribution-card. Requires optional template from docs/examples/.
+# Place above the power-distribution-card. Requires optional template from doc/examples/.
 #
 type: conditional
 conditions:

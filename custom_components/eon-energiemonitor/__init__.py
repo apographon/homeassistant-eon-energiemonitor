@@ -1,6 +1,6 @@
 """Support for EON Energiemonitor."""
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import aiohttp
 import voluptuous as vol
@@ -25,6 +25,7 @@ CONF_REGION_CODE = "region_code"
 
 API_BASE_URL = "https://api-energiemonitor.eon.com/"
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
+DASHBOARD_BASE_URL = "https://energiemonitor.bayernwerk.de/"
 
 ISSUE_REGION_NOT_FOUND = "region_not_found"
 ISSUE_UPDATE_FAILED = "update_failed"
@@ -104,43 +105,6 @@ def _async_manage_issues(hass, region_code: str, last_error: Optional[str]) -> N
         )
 
 
-async def async_setup(hass, config):
-    """Set up the EON Energiemonitor integration."""
-    if DOMAIN not in config:
-        raise ConfigError(
-            "Missing eon-energiemonitor configuration. "
-            "Add an eon-energiemonitor: block to configuration.yaml (see README)."
-        )
-
-    region_code = config[DOMAIN][CONF_REGION_CODE]
-    scan_interval = config[DOMAIN][CONF_SCAN_INTERVAL]
-
-    eon_monitor = EONEnergiemonitor(hass, region_code)
-    hass.data[DOMAIN] = eon_monitor
-
-    now = dt_util.utcnow()
-    async_track_utc_time_change(
-        hass,
-        eon_monitor.update,
-        minute=range(now.minute % scan_interval, 60, scan_interval),
-        second=now.second,
-    )
-
-    if not await eon_monitor.update():
-        _async_manage_issues(hass, region_code, eon_monitor.last_error)
-        _LOGGER.warning(
-            "EON Energiemonitor: initial update failed (%s). "
-            "Status sensor shows details; see Settings → Repairs.",
-            eon_monitor.last_error,
-        )
-    else:
-        _async_clear_issues(hass)
-
-    await discovery.async_load_platform(hass, "sensor", DOMAIN, {}, config)
-
-    return True
-
-
 class EONEnergiemonitorAPI:
     """Representation of the EON Energiemonitor API."""
 
@@ -150,50 +114,51 @@ class EONEnergiemonitorAPI:
         self._region_code = region_code
         self.last_error: Optional[str] = None
 
+    async def _get_json(self, url: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """Fetch JSON from the API. Returns (data, error_key)."""
+        try:
+            async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:
+                async with session.get(url) as resp:
+                    if resp.status == 404:
+                        return None, "region_not_found"
+                    if resp.status != 200:
+                        return None, f"http_{resp.status}"
+                    data = await resp.json()
+        except aiohttp.ClientError:
+            return None, "network"
+        except TimeoutError:
+            return None, "timeout"
+
+        if not isinstance(data, dict):
+            return None, "invalid_response"
+        return data, None
+
+    async def request_region_info(self) -> Optional[Dict[str, Any]]:
+        """Request municipality metadata from region-data API."""
+        url = f"{self._base_url}region-data?regionCode={self._region_code}"
+        data, error = await self._get_json(url)
+        if error:
+            _LOGGER.debug("region-data failed for %s: %s", self._region_code, error)
+            return None
+        _LOGGER.debug("region-data loaded for %s", self._region_code)
+        return data
+
     async def request_data(self) -> Optional[Dict[str, Any]]:
         """Request meter data from the EON Energiemonitor API."""
         self.last_error = None
         url = f"{self._base_url}meter-data?regionCode={self._region_code}"
-
-        try:
-            async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:
-                async with session.get(url) as resp:
-                    status = resp.status
-                    if status == 404:
-                        self.last_error = "region_not_found"
-                        _LOGGER.error(
-                            "Region '%s' not found (HTTP 404). "
-                            "Check region_code in configuration.yaml.",
-                            self._region_code,
-                        )
-                        return None
-                    if status != 200:
-                        self.last_error = f"http_{status}"
-                        _LOGGER.error(
-                            "EON Energiemonitor API request failed with HTTP %s",
-                            status,
-                        )
-                        return None
-
-                    data = await resp.json()
-        except aiohttp.ClientError as err:
-            self.last_error = "network"
-            _LOGGER.error("Error fetching EON Energiemonitor data: %s", err)
+        data, error = await self._get_json(url)
+        if error:
+            self.last_error = error
+            if error == "region_not_found":
+                _LOGGER.error(
+                    "Region '%s' not found (HTTP 404). Check region_code.",
+                    self._region_code,
+                )
+            else:
+                _LOGGER.error("meter-data failed for %s: %s", self._region_code, error)
             return None
-        except TimeoutError:
-            self.last_error = "timeout"
-            _LOGGER.error("Timeout fetching EON Energiemonitor data")
-            return None
-
-        if not isinstance(data, dict):
-            self.last_error = "invalid_response"
-            _LOGGER.error(
-                "Unexpected API response format for region '%s'",
-                self._region_code,
-            )
-            return None
-
-        _LOGGER.debug("EON Energiemonitor API request successful")
+        _LOGGER.debug("meter-data loaded for %s", self._region_code)
         return data
 
 
@@ -205,11 +170,35 @@ class EONEnergiemonitor(EONEnergiemonitorAPI):
         super().__init__(region_code)
         self._hass = hass
         self._data: Dict[str, Dict[str, Any]] = {}
+        self._region_info: Dict[str, Any] = {}
         self._update_listeners = []
 
     def get_data(self, name: str) -> Optional[Dict[str, Any]]:
         """Return cached data for a sensor name."""
         return self._data.get(name)
+
+    def get_region_info(self) -> Dict[str, Any]:
+        """Return cached region-data API payload."""
+        return self._region_info
+
+    def get_region_attributes(self) -> Dict[str, Any]:
+        """Return region metadata for sensor attributes and dashboards."""
+        if not self._region_info:
+            return {"region_code": self._region_code}
+
+        url_key = self._region_info.get("regionUrlKey")
+        attrs = {
+            "region_code": self._region_info.get("regionCode", self._region_code),
+            "region_name": self._region_info.get("regionName"),
+            "region_url_key": url_key,
+            "latitude": self._region_info.get("latitude"),
+            "longitude": self._region_info.get("longitude"),
+            "tenant_id": self._region_info.get("tenantId"),
+            "coat_of_arms_mime_type": self._region_info.get("coatOfArmsMimeType"),
+        }
+        if url_key:
+            attrs["dashboard_url"] = f"{DASHBOARD_BASE_URL}{url_key}"
+        return {k: v for k, v in attrs.items() if v is not None}
 
     def get_status_message(self) -> str:
         """Return a short status label for the status sensor."""
@@ -217,8 +206,16 @@ class EONEnergiemonitor(EONEnergiemonitorAPI):
             return "OK"
         return ERROR_MESSAGES.get(self.last_error, self.last_error)
 
+    async def _fetch_region_info(self) -> None:
+        """Load municipality metadata (region-data API)."""
+        region_info = await self.request_region_info()
+        if region_info:
+            self._region_info = region_info
+
     async def update(self, *_args) -> bool:
-        """Fetch new data from the EON Energiemonitor API."""
+        """Fetch region metadata and meter data."""
+        await self._fetch_region_info()
+
         payload = await self.request_data()
         if payload is None:
             self._set_status_data(ok=False)
@@ -250,15 +247,23 @@ class EONEnergiemonitor(EONEnergiemonitorAPI):
             state = self.get_status_message()
         else:
             state = "No data"
+
+        attrs = self.get_region_attributes()
+        attrs["last_error"] = self.last_error
+        attrs["region_lookup_url"] = (
+            f"{API_BASE_URL}region-data?regionCode={self._region_code}"
+        )
+
         self._data["status"] = {
             "state": state,
-            "attributes": {
-                "region_code": self._region_code,
-                "last_error": self.last_error,
-                "region_lookup_url": (
-                    "https://api-energiemonitor.eon.com/region-data?regionUrlKey=<slug>"
-                ),
-            },
+            "attributes": attrs,
+            "unit": None,
+        }
+
+        region_name = self._region_info.get("regionName")
+        self._data["region"] = {
+            "state": region_name or "unknown",
+            "attributes": self.get_region_attributes(),
             "unit": None,
         }
 
@@ -341,3 +346,39 @@ class EONEnergiemonitor(EONEnergiemonitorAPI):
         for listener in self._update_listeners:
             listener.update_callback()
         _LOGGER.debug("Notified %s listener(s)", len(self._update_listeners))
+
+
+async def async_setup(hass, config):
+    """Set up the EON Energiemonitor integration."""
+    if DOMAIN not in config:
+        raise ConfigError(
+            "Missing eon-energiemonitor configuration. "
+            "Add eon-energiemonitor: to configuration.yaml (see README)."
+        )
+
+    region_code = config[DOMAIN][CONF_REGION_CODE]
+    scan_interval = config[DOMAIN][CONF_SCAN_INTERVAL]
+
+    eon_monitor = EONEnergiemonitor(hass, region_code)
+    hass.data[DOMAIN] = eon_monitor
+
+    now = dt_util.utcnow()
+    async_track_utc_time_change(
+        hass,
+        eon_monitor.update,
+        minute=range(now.minute % scan_interval, 60, scan_interval),
+        second=now.second,
+    )
+
+    if not await eon_monitor.update():
+        _async_manage_issues(hass, region_code, eon_monitor.last_error)
+        _LOGGER.warning(
+            "Initial EON Energiemonitor update failed (%s)",
+            eon_monitor.last_error,
+        )
+    else:
+        _async_clear_issues(hass)
+
+    await discovery.async_load_platform(hass, "sensor", DOMAIN, {}, config)
+
+    return True

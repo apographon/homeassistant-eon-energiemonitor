@@ -75,11 +75,16 @@ After fixing `region_code`, restart Home Assistant (or wait for the next schedul
 |------|---------|
 | `ui/eon-energiemonitor-status-banner.yaml` | Markdown hint when status is not OK |
 | `ui/eon-energiemonitor-power-card.yaml` | Example [power-distribution-card](https://github.com/JonahKr/power-distribution-card) layout |
-| `docs/examples/eon_energiemonitor_setup_hint.yaml` | Template sensor when integration is not loaded |
+| `doc/examples/eon_energiemonitor_setup_hint.yaml` | Template sensor when integration is not loaded |
+
+Screenshots and examples live under **`doc/`** (`regionCode.png`, `example.png`, `doc/examples/`).
+
+Full **API field reference**: [doc/API.md](doc/API.md) (region-data, meter-data, autarky, energyMix, entity mapping).
 
 ## Entities
 
-* `sensor.eon_energiemonitor_status`
+* `sensor.eon_energiemonitor_status` (diagnostic; includes `dashboard_url`, region metadata)
+* `sensor.eon_energiemonitor_region` (municipality name from region-data)
 * `sensor.eon_energiemonitor_autarky`
 * `sensor.eon_energiemonitor_secondaryinfeed`
 * `sensor.eon_energiemonitor_energymix`

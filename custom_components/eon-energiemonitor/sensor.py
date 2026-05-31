@@ -18,6 +18,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     eon_energiemonitor = hass.data[DOMAIN]
     sensors = [
         EONStatusSensor(eon_energiemonitor),
+        EONRegionSensor(eon_energiemonitor),
         EONEnergySensor("autarky", eon_energiemonitor),
         EONEnergySensor("secondaryInFeed", eon_energiemonitor),
         EONEnergySensor("energyMix", eon_energiemonitor),
@@ -56,11 +57,50 @@ class EONStatusSensor(SensorEntity):
         """Apply coordinator status."""
         data = self._eon_energiemonitor.get_data("status")
         if data is None:
-            self._attr_native_value = "Unbekannt"
-            self._attributes = {}
+            self._attr_native_value = "Unknown"
+            self._attributes = self._eon_energiemonitor.get_region_attributes()
             return
 
-        self._attr_native_value = data.get("state", "Unbekannt")
+        self._attr_native_value = data.get("state", "Unknown")
+        self._attributes = data.get("attributes") or {}
+
+    def update_callback(self) -> None:
+        """Schedule a state update."""
+        self.async_schedule_update_ha_state(True)
+
+    async def async_added_to_hass(self) -> None:
+        """Register for coordinator updates."""
+        self._eon_energiemonitor.add_update_listener(self)
+
+
+class EONRegionSensor(SensorEntity):
+    """Municipality name and region metadata from region-data API."""
+
+    _attr_should_poll = False
+    _attr_icon = "mdi:map-marker"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, eon_energiemonitor) -> None:
+        """Initialize the region sensor."""
+        self._eon_energiemonitor = eon_energiemonitor
+        self._attr_name = "eon_energiemonitor_region"
+        self._attr_unique_id = "eon_energy_region"
+        self._attributes: dict = {}
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return region metadata for dashboards."""
+        return self._attributes
+
+    async def async_update(self) -> None:
+        """Apply cached region-data."""
+        data = self._eon_energiemonitor.get_data("region")
+        if data is None:
+            self._attr_native_value = None
+            self._attributes = self._eon_energiemonitor.get_region_attributes()
+            return
+
+        self._attr_native_value = data.get("state")
         self._attributes = data.get("attributes") or {}
 
     def update_callback(self) -> None:
