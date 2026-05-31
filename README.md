@@ -21,6 +21,8 @@ Configuration variables:
 * **region_code**: The location ID you want to collect values from. You can find it by analyzing the network traffic of the webpage as shown in the following.
 * **scan_interval** (optional): How often new updates should be fetched. In minutes, default 5 minutes same as the official web app.
 
+**Planned (v0.3.0):** Optional additional regions via a `scope` list (backward compatible). Design spec: [doc/SCOPE_SPEC.md](doc/SCOPE_SPEC.md). Discussion: [issue #4](https://github.com/dannerph/homeassistant-eon-energiemonitor/issues/4).
+
 ![how to find region code](doc/regionCode.png "Network traffic analysis ")
 
 Works best with the [power-distribution-card](https://github.com/JonahKr/power-distribution-card) by [JonahKr](https://github.com/JonahKr).
