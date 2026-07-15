@@ -5,6 +5,8 @@ Web dashboard: `https://energiemonitor.bayernwerk.de/<regionUrlKey>`
 
 **Region list (snapshot):** [REGIONEN.md](REGIONEN.md) — all municipalities per grid operator, how to look up your `region_code`, and `scripts/generate-regions-doc.py` to refresh the file.
 
+**Multi-region (v0.3.0):** optional `scope` list — see [SCOPE_SPEC.md](SCOPE_SPEC.md).
+
 The integration calls **two endpoints** on each update (`scan_interval` minutes). Values for **autarky** and **energyMix** are provided by the API (regional balance, not calculated in Home Assistant). See [Bayernwerk Energiemonitor](https://www.bayernwerk.de/de/fuer-kommunen/digitale-loesungen/energiemonitor.html) for the public product description.
 
 ## `region-data`

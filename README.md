@@ -22,8 +22,25 @@ Configuration variables:
 
 * **region_code** (required): Numeric location ID for the EON API (`meter-data?regionCode=…`). Must contain digits only — not the municipality URL slug.
 * **scan_interval** (optional): Update interval in **minutes**. Default: `5` (same as the web app).
+* **scope** (optional, v0.3.0+): Additional regions (e.g. district vs municipality). Each entry needs `region_code` and `alias` (prefix for entity names). See [doc/SCOPE_SPEC.md](doc/SCOPE_SPEC.md).
 
-## Resolve your region_code
+### Multiple regions (scope)
+
+Keep **`region_code`** as the primary region (existing entity IDs unchanged). Add further regions under **`scope`**:
+
+```yaml
+eon-energiemonitor:
+  region_code: "12345678"
+  scan_interval: 5
+  scope:
+    - region_code: "1234"
+      alias: landkreis
+      # scan_interval: 10   # optional override for this entry
+```
+
+Legacy entities stay `sensor.eon_energiemonitor_*`. Scope entities use the alias prefix, e.g. `sensor.eon_energiemonitor_landkreis_autarky`, `sensor.eon_energiemonitor_landkreis_status`.
+
+Example package: [doc/examples/eon_energiemonitor_scope.yaml](doc/examples/eon_energiemonitor_scope.yaml).
 
 Each municipality dashboard has a URL slug (last path segment) and a separate numeric **region_code** for the API.
 
@@ -75,6 +92,7 @@ After fixing `region_code`, restart Home Assistant (or wait for the next schedul
 |------|---------|
 | `ui/eon-energiemonitor-status-banner.yaml` | Markdown hint when status is not OK |
 | `ui/eon-energiemonitor-power-card.yaml` | Example [power-distribution-card](https://github.com/JonahKr/power-distribution-card) layout |
+| `ui/eon-energiemonitor-landkreis-title.yaml` + `landkreis-power-card.yaml` | Scope example (alias `landkreis`) |
 | `doc/examples/eon_energiemonitor_setup_hint.yaml` | Template sensor when integration is not loaded |
 
 Screenshots and examples live under **`doc/`** (`regionCode.png`, `example.png`, `doc/examples/`).

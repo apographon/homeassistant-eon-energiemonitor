@@ -7,6 +7,14 @@
     "update_failed": {
       "title": "EON Energiemonitor: No data",
       "description": "Update failed ({error}). Check network connectivity, region_code, and Home Assistant logs (filter: eon_energiemonitor)."
+    },
+    "scope_region_not_found": {
+      "title": "EON Energiemonitor ({alias}): Invalid region_code",
+      "description": "scope alias \"{alias}\": region_code \"{region_code}\" was not found by the EON API. Resolve via `region-data?regionUrlKey=<slug>` or `region-data?tenantId=<id>`. See doc/SCOPE_SPEC.md."
+    },
+    "scope_update_failed": {
+      "title": "EON Energiemonitor ({alias}): No data",
+      "description": "scope alias \"{alias}\": update failed ({error}). Check network, region_code, and Home Assistant logs (filter: eon_energiemonitor)."
     }
   }
 }
